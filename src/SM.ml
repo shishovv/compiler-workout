@@ -30,20 +30,28 @@ let rec eval cfg prg =
             let (stack, stmtCfg) = cfg in
             let (st, input, output) = stmtCfg in
             match instr with
-            | BINOP op -> 
-                    let l::r::s = stack in
-                    eval ((Syntax.Expr.evalBinOp op l r)::s,stmtCfg) instrs
+            | BINOP op -> (
+                    match stack with
+                    | r::l::s -> eval ((Syntax.Expr.evalBinOp op l r)::s,stmtCfg) instrs
+                    | _ -> failwith "binop failed : not enough args"
+            )
             | CONST c -> eval (c::stack, stmtCfg) instrs
-            | READ -> 
-                    let x::xs = input in
-                    eval (x::stack, (st, xs, output)) instrs
-            | WRITE -> 
-                    let x::xs = stack in
-                    eval (xs, (st, input, output@[x])) instrs
+            | READ -> (
+                    match input with
+                    | x::xs -> eval (x::stack, (st, xs, output)) instrs
+                    | _ -> failwith "read failed : invalid input"
+            )
+            | WRITE -> (
+                    match stack with
+                    | x::xs -> eval (xs, (st, input, output@[x])) instrs
+                    | _ -> failwith "write failed : not enough args"
+            )
             | LD var -> eval ((st var)::stack, stmtCfg) instrs
-            | ST var -> 
-                    let x::xs = stack in
-                    eval (xs, (Syntax.Expr.update var x st, input, output)) instrs
+            | ST var -> (
+                    match stack with
+                    | x::xs -> eval (xs, (Syntax.Expr.update var x st, input, output)) instrs
+                    | _ -> failwith "st failed : not enough args"
+            )
 (* Top-level evaluation
 
      val run : int list -> prg -> int list

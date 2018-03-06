@@ -87,9 +87,11 @@ module Stmt =
     let rec eval cfg p = 
         let (st, input, output) = cfg in
         match p with
-        | Read var -> 
-                let x::xs = input in
-                (Expr.update var x st, xs, output)
+        | Read var -> (
+                match input with
+                | x::xs -> (Expr.update var x st, xs, output)
+                | _ -> failwith "read failed : incorrect input"
+        )
         | Write e -> (st, input, output@[(Expr.eval st e)])
         | Assign (var, e) -> (Expr.update var (Expr.eval st e) st, input, output)
         | Seq (e1, e2) -> eval (eval cfg e1) e2 
