@@ -24,7 +24,36 @@ type config = int list * Stmt.config
 
    Takes a configuration and a program, and returns a configuration as a result
  *)                         
-let eval _ = failwith "Not yet implemented"
+
+let rec eval cfg prg =
+    match prg with
+    | [] -> cfg
+    | instr::instrs ->
+            let (stack, stmtCfg) = cfg in
+            let (st, input, output) = stmtCfg in
+            match instr with
+            | BINOP op -> (
+                    match stack with
+                    | r::l::s -> eval ((Language.Expr.evalBinOp op l r)::s,stmtCfg) instrs
+                    | _ -> failwith "binop failed : not enough args"
+            )
+            | CONST c -> eval (c::stack, stmtCfg) instrs
+            | READ -> (
+                    match input with
+                    | x::xs -> eval (x::stack, (st, xs, output)) instrs
+                    | _ -> failwith "read failed : invalid input"
+            )
+            | WRITE -> (
+                    match stack with
+                    | x::xs -> eval (xs, (st, input, output@[x])) instrs
+                    | _ -> failwith "write failed : not enough args"
+            )
+            | LD var -> eval ((st var)::stack, stmtCfg) instrs
+            | ST var -> (
+                    match stack with
+                    | x::xs -> eval (xs, (Language.Expr.update var x st, input, output)) instrs
+                    | _ -> failwith "st failed : not enough args"
+            )
 
 (* Top-level evaluation
 
@@ -41,4 +70,16 @@ let run p i = let (_, (_, _, o)) = eval ([], (Language.Expr.empty, i, [])) p in 
    Takes a program in the source language and returns an equivalent program for the
    stack machine
  *)
-let compile _ = failwith "Not yet implemented"
+
+let rec compileExpr e =
+    match e with
+    | Language.Expr.Const c -> [CONST c]
+    | Language.Expr.Var var -> [LD var]
+    | Language.Expr.Binop (op, l, r) -> (compileExpr l)@(compileExpr r)@[BINOP op]
+
+let rec compile expr =
+    match expr with
+    | Language.Stmt.Read var -> [READ; ST var]
+    | Language.Stmt.Write e -> (compileExpr e)@[WRITE]
+    | Language.Stmt.Assign (var, e) -> (compileExpr e)@[ST var]
+    | Language.Stmt.Seq (e1, e2) -> (compile e1)@(compile e2)
