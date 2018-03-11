@@ -85,9 +85,9 @@ module Expr =
             !(Ostap.Util.expr
                (fun x -> x)
                [|
-                 `Lefta , buildOstapBinOpLst ["||"];
+                 `Lefta , buildOstapBinOpLst ["!!"];
                  `Lefta , buildOstapBinOpLst ["&&"];
-                 `Nona  , buildOstapBinOpLst [">"; ">="; "<"; "<="; "=="; "!="];
+                 `Nona  , buildOstapBinOpLst [">="; ">"; "<="; "<"; "=="; "!="];
                  `Lefta , buildOstapBinOpLst ["+"; "-"];
                  `Lefta , buildOstapBinOpLst ["*"; "/"; "%"];
                |]
@@ -142,7 +142,7 @@ module Stmt =
                 simple_stmt
             );
         simple_stmt:
-            x:IDENT ":=" e:!(Expr.parse) {Assign (x, e)}
+          x:IDENT ":=" e:!(Expr.parse) {Assign (x, e)}
         | "read" "(" x:IDENT ")" {Read x}
         | "write" "(" e:!(Expr.parse) ")" {Write e}
     )
