@@ -13,8 +13,7 @@ module Expr =
     (* The type for expressions. Note, in regular OCaml there is no "@type..." 
        notation, it came from GT. 
     *)
-    @type t =
-    (* integer constant *) | Const of int
+    @type t = (* integer constant *) | Const of int
     (* variable         *) | Var   of string
     (* binary operator  *) | Binop of string * t * t with show
 
@@ -79,22 +78,22 @@ module Expr =
          DECIMAL --- a decimal constant [0-9]+ as a string
    
     *)
-    let buildOstapBinOpLst ops = List.map (fun op -> (ostap ($(op)), fun x y -> Binop(op, x, y))) ops
+    let buildOstapBinOpLst ops = List.map (fun op -> (ostap ($(op)), fun x y -> Binop (op, x, y))) ops
 
     ostap (
-      expr:
-  	!(Ostap.Util.expr
-           (fun x -> x)
-           [|
-             `Lefta , buildOstapBinOpLst ["||"];
-             `Lefta , buildOstapBinOpLst ["&&"];
-             `Nona  , buildOstapBinOpLst [">"; ">="; "<"; "<="; "=="; "!="];
-             `Lefta , buildOstapBinOpLst ["+"; "-"];
-             `Lefta , buildOstapBinOpLst ["*"; "/"; "%"];
-           |]
-           primary
-         );
-      primary: x:IDENT {Var x} | x:DECIMAL {Const x} | -"(" expr -")"
+        parse:
+            !(Ostap.Util.expr
+               (fun x -> x)
+               [|
+                 `Lefta , buildOstapBinOpLst ["||"];
+                 `Lefta , buildOstapBinOpLst ["&&"];
+                 `Nona  , buildOstapBinOpLst [">"; ">="; "<"; "<="; "=="; "!="];
+                 `Lefta , buildOstapBinOpLst ["+"; "-"];
+                 `Lefta , buildOstapBinOpLst ["*"; "/"; "%"];
+               |]
+               primary
+            );
+        primary: x:IDENT {Var x} | x:DECIMAL {Const x} | -"(" parse -")"
     )
 
   end
@@ -134,7 +133,18 @@ module Stmt =
 
     (* Statement parser *)
     ostap (
-        parse: empty { failwith "" }
+        parse:
+            !(Ostap.Util.expr
+                (fun x -> x)
+                [|
+                    `Lefta , [ostap(";"), (fun x y -> Seq (x, y))];
+                |]
+                simple_stmt
+            );
+        simple_stmt:
+            x:IDENT ":=" e:!(Expr.parse) {Assign (x, e)}
+        | "read" "(" x:IDENT ")" {Read x}
+        | "write" "(" e:!(Expr.parse) ")" {Write e}
     )
 
       
