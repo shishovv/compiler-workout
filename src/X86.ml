@@ -88,8 +88,19 @@ let compileBinop env op =
         | ">="            -> compileCmp "ge" lop rop
         | "=="            -> compileCmp "e" lop rop
         | "!="            -> compileCmp "ne" lop rop
-        | "&&" | "!!"     -> [Mov (lop, eax); Binop (op, rop, eax); Set ("nz", "%al"); Binop ("&&", L 1, eax); Mov (eax, lop)]
-        | _ -> failwith "asd"
+        | "!!"            -> [Mov (lop, eax); Binop (op, rop, eax); Set ("nz", "%al"); Binop ("&&", L 1, eax); Mov (eax, lop)]
+        | "&&"            -> [Mov (lop, eax); 
+                              Binop ("cmp", L 0, eax); 
+                              Set ("nz", "%al");
+                              Binop ("&&", L 1, eax); 
+                              Mov (eax, edx);
+                              Mov (rop, eax);
+                              Binop ("cmp", L 0, eax); 
+                              Set ("nz", "%al");
+                              Binop ("&&", L 1, eax); 
+                              Binop ("&&", edx, eax); 
+                              Mov (eax, lop)]
+        | _ -> failwith "not implemented yet"
     in env#push lop, code
 
 (* Symbolic stack machine evaluator
