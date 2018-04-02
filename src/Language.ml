@@ -44,31 +44,33 @@ module Expr =
        Takes a state and an expression, and returns the value of the expression in 
        the given state.
      *)                                                       
-    let to_func op =
-      let bti   = function true -> 1 | _ -> 0 in
-      let itb b = b <> 0 in
-      let (|>) f g   = fun x y -> f (g x y) in
-      match op with
-      | "+"  -> (+)
-      | "-"  -> (-)
-      | "*"  -> ( * )
-      | "/"  -> (/)
-      | "%"  -> (mod)
-      | "<"  -> bti |> (< )
-      | "<=" -> bti |> (<=)
-      | ">"  -> bti |> (> )
-      | ">=" -> bti |> (>=)
-      | "==" -> bti |> (= )
-      | "!=" -> bti |> (<>)
-      | "&&" -> fun x y -> bti (itb x && itb y)
-      | "!!" -> fun x y -> bti (itb x || itb y)
-      | _    -> failwith (Printf.sprintf "Unknown binary operator %s" op)    
-    
-    let rec eval st expr =      
-      match expr with
-      | Const n -> n
-      | Var   x -> st x
-      | Binop (op, x, y) -> to_func op (eval st x) (eval st y)
+    let evalBinOp op l r =
+            let toBool i = i != 0 in
+            let toInt  b = if b then 1 else 0 in
+            match op with
+            | "+"  -> l + r
+            | "-"  -> l - r
+            | "*"  -> l * r
+            | "/"  -> l / r
+            | "%"  -> l mod r
+            | "<"  -> toInt (l < r)
+            | "<=" -> toInt (l <= r)
+            | ">"  -> toInt (l > r)
+            | ">=" -> toInt (l >= r)
+            | "==" -> toInt (l == r)
+            | "!=" -> toInt (l != r)
+            | "&&" -> toInt (toBool l && toBool r)
+            | "!!" -> toInt (toBool l || toBool r)
+            | _    -> failwith "unknown operator"
+
+        let rec eval st e =
+        match e with
+        | Const c -> c
+        | Var x -> st x
+        | Binop (op, lop, rop) ->
+            let l = eval st lop in
+            let r = eval st rop in
+            evalBinOp op l r
 
     (* Expression parser. You can use the following terminals:
 
@@ -76,8 +78,22 @@ module Expr =
          DECIMAL --- a decimal constant [0-9]+ as a string
                                                                                                                   
     *)
+     let buildOstapBinOpLst ops = List.map (fun op -> (ostap ($(op)), fun x y -> Binop (op, x, y))) ops
+
     ostap (                                      
-      parse: empty {failwith "Not yet implemented"}
+        parse:
+            !(Ostap.Util.expr
+               (fun x -> x)
+               [|
+                 `Lefta , buildOstapBinOpLst ["!!"];
+                 `Lefta , buildOstapBinOpLst ["&&"];
+                 `Nona  , buildOstapBinOpLst [">="; ">"; "<="; "<"; "=="; "!="];
+                 `Lefta , buildOstapBinOpLst ["+"; "-"];
+                 `Lefta , buildOstapBinOpLst ["*"; "/"; "%"];
+               |]
+               primary
+            );
+        primary: x:IDENT {Var x} | x:DECIMAL {Const x} | -"(" parse -")"
     )
     
   end
@@ -111,7 +127,18 @@ module Stmt =
                                 
     (* Statement parser *)
     ostap (
-      parse: empty {failwith "Not yet implemented"}
+        parse:
+            !(Ostap.Util.expr
+                (fun x -> x)
+                [|
+                    `Lefta , [ostap(";"), (fun x y -> Seq (x, y))];
+                |]
+                simple_stmt
+            );
+        simple_stmt:
+          x:IDENT ":=" e:!(Expr.parse) {Assign (x, e)}
+        | "read" "(" x:IDENT ")" {Read x}
+        | "write" "(" e:!(Expr.parse) ")" {Write e}
     )
       
   end

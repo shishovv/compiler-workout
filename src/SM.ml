@@ -24,7 +24,35 @@ type config = int list * Stmt.config
 
    Takes a configuration and a program, and returns a configuration as a result
 *)                         
-let rec eval conf prog = failwith "Not yet implemented"
+let rec eval cfg prg =
+    match prg with
+    | [] -> cfg
+    | instr::instrs ->
+            let (stack, stmtCfg) = cfg in
+            let (st, input, output) = stmtCfg in
+            match instr with
+            | BINOP op -> (
+                    match stack with
+                    | r::l::s -> eval ((Language.Expr.evalBinOp op l r)::s,stmtCfg) instrs
+                    | _ -> failwith "binop failed : not enough args"
+            )
+            | CONST c -> eval (c::stack, stmtCfg) instrs
+            | READ -> (
+                    match input with
+                    | x::xs -> eval (x::stack, (st, xs, output)) instrs
+                    | _ -> failwith "read failed : invalid input"
+            )
+            | WRITE -> (
+                    match stack with
+                    | x::xs -> eval (xs, (st, input, output@[x])) instrs
+                    | _ -> failwith "write failed : not enough args"
+            )
+            | LD var -> eval ((st var)::stack, stmtCfg) instrs
+            | ST var -> (
+                    match stack with
+                    | x::xs -> eval (xs, (Language.Expr.update var x st, input, output)) instrs
+                    | _ -> failwith "st failed : not enough args"
+            )
 
 (* Top-level evaluation
 
