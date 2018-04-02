@@ -76,7 +76,6 @@ open SM
 let compileCmp flag lop rop = 
     [Mov (lop, eax); Binop ("-", rop, eax); Set (flag, "%al"); Binop ("&&", L 1, eax); Mov (eax, lop)]
 
-
 let compileBinop env op = 
     let rop, lop, env = env#pop2 in
     let code = match op with
@@ -115,11 +114,11 @@ let rec compile env = function
                     env, [Push s; Call "Lwrite"; Pop eax]
             | LD x ->
                     let s, env = (env#global x)#allocate in
-                    env, [Mov (M (env#loc x), s)]
+                    env, [Mov (M (env#loc x), eax); Mov (eax, s)]
             | ST x ->
                     let s, env = (env#global x)#pop in
                     env, [Mov (s, M (env#loc x))]
-            |BINOP op ->
+            | BINOP op ->
                     compileBinop env op
             | _ -> failwith "not implemented yet"
             in let env, asm' = compile env code' in
