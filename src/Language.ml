@@ -126,13 +126,21 @@ module Stmt =
       match stmt with
       | Read    x       -> 
               (match i with z::i' -> (Expr.update x z st, i', o) | _ -> failwith "Unexpected end of input")
-      | Write   e       -> (st, i, o @ [Expr.eval st e])
+      | Write e         -> (st, i, o @ [Expr.eval st e])
       | Assign (x, e)   -> (Expr.update x (Expr.eval st e) st, i, o)
-      | Seq    (s1, s2) -> eval (eval conf s1) s2
+      | Seq (s1, s2)    -> eval (eval conf s1) s2
       | Skip            -> conf
       | If (e, s1, s2)  -> if Expr.eval st e != 0 
                            then eval conf s1
                            else eval conf s2
+      | While (e, s)    -> if Expr.eval st e != 0
+                           then eval (eval conf s) stmt
+                           else conf
+      | Repeat (s, e)   -> 
+              let ((st, i, o) as conf) = eval conf s in
+              if Expr.eval st e != 0
+              then eval conf stmt
+              else conf
                                
     (* Statement parser *)
     ostap (
@@ -155,6 +163,17 @@ module Stmt =
             elseb:(%"else" parse)?
           %"fi" {If (e, s1, List.fold_right (fun (e, s1) s2 -> 
               If (e, s1, s2)) elifs (match elseb with Some x -> x | None -> Skip))}
+        | %"while" e:!(Expr.parse) 
+            %"do" 
+                s:parse 
+            %"od" {While (e, s)}
+        | %"repeat" 
+            s:parse 
+            %"until" e:!(Expr.parse) {Repeat (s, e)}
+        | %"for" i:parse -"," cond:!(Expr.parse) -"," upd:parse %"do"
+            s:parse
+            %"od" {Seq (i, While(cond, Seq(s, upd)))}
+               
     )
       
   end

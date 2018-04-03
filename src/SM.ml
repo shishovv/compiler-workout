@@ -111,12 +111,28 @@ let rec compile =
     | Stmt.Write e        -> expr e @ [WRITE]
     | Stmt.Assign (x, e)  -> expr e @ [ST x]
     | Stmt.Skip           -> []
-    | Stmt.If (e, s1, s2) -> 
-        let els = env#next in
-        let fi  = env#next in
-        expr e @ 
-        [CJMP ("z", els)] @ 
-        compile s1 @ 
-        [JMP fi; LABEL els] @ 
-        compile s2 @ 
-        [LABEL fi]
+    | Stmt.If (e, s1, s2) ->
+            let els = env#next in
+            let fi  = env#next in
+            expr e @ 
+            [CJMP ("z", els)] @ 
+            compile s1 @ 
+            [JMP fi; LABEL els] @ 
+            compile s2 @ 
+            [LABEL fi]
+    | Stmt.While (e, s)   ->
+            let bdyl = env#next in
+            let endl = env#next in
+            [LABEL bdyl] @
+            expr e @
+            [CJMP ("z", endl)] @
+            compile s @
+            [JMP bdyl; LABEL endl]
+    | Stmt.Repeat (s, e) ->
+            let bdyl = env#next in
+            [LABEL bdyl] @
+            compile s @
+            expr e @
+            [CJMP ("z", bdyl)]
+
+
