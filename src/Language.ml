@@ -139,8 +139,8 @@ module Stmt =
       | Repeat (s, e)   -> 
               let ((st, i, o) as conf) = eval conf s in
               if Expr.eval st e != 0
-              then eval conf stmt
-              else conf
+              then conf
+              else eval conf stmt
                                
     (* Statement parser *)
     ostap (
