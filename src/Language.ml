@@ -44,7 +44,33 @@ module Expr =
        Takes a state and an expression, and returns the value of the expression in 
        the given state.
     *)                                                       
-    let eval st expr = failwith "Not yet implemented"
+    let evalBinOp op l r =
+        let toBool i = i != 0 in
+        let toInt  b = if b then 1 else 0 in
+        match op with
+        | "+"  -> l + r
+        | "-"  -> l - r
+        | "*"  -> l * r
+        | "/"  -> l / r
+        | "%"  -> l mod r
+        | "<"  -> toInt (l < r)
+        | "<=" -> toInt (l <= r)
+        | ">"  -> toInt (l > r)
+        | ">=" -> toInt (l >= r)
+        | "==" -> toInt (l == r)
+        | "!=" -> toInt (l != r)
+        | "&&" -> toInt (toBool l && toBool r)
+        | "!!" -> toInt (toBool l || toBool r)
+        | _    -> failwith "unknown operator"
+
+    let rec eval st e =
+    match e with
+    | Const c -> c
+    | Var x -> st x
+    | Binop (op, lop, rop) ->
+        let l = eval st lop in
+        let r = eval st rop in
+        evalBinOp op l r
 
     (* Expression parser. You can use the following terminals:
 
@@ -52,8 +78,22 @@ module Expr =
          DECIMAL --- a decimal constant [0-9]+ as a string
                                                                                                                   
     *)
+    let buildOstapBinOpLst ops = List.map (fun op -> (ostap ($(op)), fun x y -> Binop (op, x, y))) ops
+
     ostap (                                      
-      parse: empty {failwith "Not yet implemented"}
+        parse:
+            !(Ostap.Util.expr
+               (fun x -> x)
+               [|
+                 `Lefta , buildOstapBinOpLst ["!!"];
+                 `Lefta , buildOstapBinOpLst ["&&"];
+                 `Nona  , buildOstapBinOpLst [">="; ">"; "<="; "<"; "=="; "!="];
+                 `Lefta , buildOstapBinOpLst ["+"; "-"];
+                 `Lefta , buildOstapBinOpLst ["*"; "/"; "%"];
+               |]
+               primary
+            );
+        primary: x:IDENT {Var x} | x:DECIMAL {Const x} | -"(" parse -")"
     )
     
   end
@@ -71,7 +111,7 @@ module Stmt =
     (* empty statement                  *) | Skip
     (* conditional                      *) | If     of Expr.t * t * t
     (* loop with a pre-condition        *) | While  of Expr.t * t
-    (* loop with a post-condition       *) (* add yourself *)  with show
+    (* loop with a post-condition       *) | Repeat of t * Expr.t  with show
                                                                     
     (* The type of configuration: a state, an input stream, an output stream *)
     type config = Expr.state * int list * int list 
@@ -82,11 +122,39 @@ module Stmt =
 
        Takes a configuration and a statement, and returns another configuration
     *)
-    let rec eval conf stmt = failwith "Not yet implemented"
+    let rec eval ((st, i, o) as conf) stmt =
+      match stmt with
+      | Read    x       -> 
+              (match i with z::i' -> (Expr.update x z st, i', o) | _ -> failwith "Unexpected end of input")
+      | Write   e       -> (st, i, o @ [Expr.eval st e])
+      | Assign (x, e)   -> (Expr.update x (Expr.eval st e) st, i, o)
+      | Seq    (s1, s2) -> eval (eval conf s1) s2
+      | Skip            -> conf
+      | If (e, s1, s2)  -> if Expr.eval st e != 0 
+                           then eval conf s1
+                           else eval conf s2
                                
     (* Statement parser *)
     ostap (
-      parse: empty {failwith "Not yet implemented"}
+        parse:
+            !(Ostap.Util.expr
+                (fun x -> x)
+                [|
+                    `Lefta , [ostap(";"), (fun x y -> Seq (x, y))];
+                |]
+                simple_stmt
+            );
+        simple_stmt:
+          x:IDENT ":=" e:!(Expr.parse) {Assign (x, e)}
+        | "read" "(" x:IDENT ")" {Read x}
+        | "write" "(" e:!(Expr.parse) ")" {Write e}
+        | %"skip" {Skip}
+        | %"if" e:!(Expr.parse)
+          %"then" s1:parse
+            elifs:(%"elif" !(Expr.parse) %"then" parse)*
+            elseb:(%"else" parse)?
+          %"fi" {If (e, s1, List.fold_right (fun (e, s1) s2 -> 
+              If (e, s1, s2)) elifs (match elseb with Some x -> x | None -> Skip))}
     )
       
   end

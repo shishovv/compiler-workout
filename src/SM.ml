@@ -28,7 +28,46 @@ type config = int list * Stmt.config
    Takes an environment, a configuration and a program, and returns a configuration as a result. The
    environment is used to locate a label to jump to (via method env#labeled <label_name>)
 *)                         
-let rec eval env conf prog = failwith "Not yet implemented"
+let rec eval env cfg prg = 
+    match prg with
+    | [] -> cfg
+    | instr::instrs ->
+            let (stack, stmtCfg) = cfg in
+            let (st, input, output) = stmtCfg in
+            match instr with
+            | BINOP op -> (
+                    match stack with
+                    | r::l::s -> eval env ((Language.Expr.evalBinOp op l r)::s,stmtCfg) instrs
+                    | _ -> failwith "binop failed : not enough args"
+            )
+            | CONST c -> eval env (c::stack, stmtCfg) instrs
+            | READ -> (
+                    match input with
+                    | x::xs -> eval env (x::stack, (st, xs, output)) instrs
+                    | _ -> failwith "read failed : invalid input"
+            )
+            | WRITE -> (
+                    match stack with
+                    | x::xs -> eval env (xs, (st, input, output@[x])) instrs
+                    | _ -> failwith "write failed : not enough args"
+            )
+            | LD var -> eval env ((st var)::stack, stmtCfg) instrs
+            | ST var -> (
+                    match stack with
+                    | x::xs -> eval env (xs, (Language.Expr.update var x st, input, output)) instrs
+                    | _ -> failwith "st failed : not enough args"
+            )
+            | LABEL _ -> eval env cfg instrs
+            | JMP l -> eval env cfg (env#labeled l)
+            | CJMP (flag, l) -> 
+                    let (x::xs) = stack in
+                    let cond = match flag with
+                    | "z"  -> x == 0
+                    | "nz" -> x != 0 in
+                    eval env (xs, stmtCfg) (if (cond) 
+                                            then env#labeled l
+                                            else instrs)
+
 
 (* Top-level evaluation
 
@@ -46,6 +85,13 @@ let run p i =
   let m = make_map M.empty p in
   let (_, (_, _, o)) = eval (object method labeled l = M.find l m end) ([], (Expr.empty, i, [])) p in o
 
+let env = object
+    val mutable cnt = 0
+    method next = 
+        cnt <- cnt + 1;
+        "l_" ^ string_of_int cnt
+end
+
 (* Stack machine compiler
 
      val compile : Language.Stmt.t -> prg
@@ -53,4 +99,24 @@ let run p i =
    Takes a program in the source language and returns an equivalent program for the
    stack machine
 *)
-let compile p = failwith "Not yet implemented"
+let rec compile = 
+    let rec expr = function
+    | Expr.Var   x          -> [LD x]
+    | Expr.Const n          -> [CONST n]
+    | Expr.Binop (op, x, y) -> expr x @ expr y @ [BINOP op] 
+    in
+    function
+    | Stmt.Seq (s1, s2)   -> compile s1 @ compile s2
+    | Stmt.Read x         -> [READ; ST x]
+    | Stmt.Write e        -> expr e @ [WRITE]
+    | Stmt.Assign (x, e)  -> expr e @ [ST x]
+    | Stmt.Skip           -> []
+    | Stmt.If (e, s1, s2) -> 
+        let els = env#next in
+        let fi  = env#next in
+        expr e @ 
+        [CJMP ("z", els)] @ 
+        compile s1 @ 
+        [JMP fi; LABEL els] @ 
+        compile s2 @ 
+        [LABEL fi]
