@@ -148,7 +148,7 @@ let rec compile env = function
                     env, [Binop("cmp", L 0, s); CJmp(flag, l)]
             | BEGIN (f, args, locals) ->
                     let env = env#enter f args locals in
-                    env, [Push ebp; Mov (ebp, esp); Binop ("-", M ("$" ^ env#lsize), esp)]
+                    env, [Push ebp; Mov (esp, ebp); Binop ("-", M ("$" ^ env#lsize), esp)]
             | END ->
                     let m = Printf.sprintf "\t.set %s, %d" env#lsize (env#allocated * word_size) in
                     env, [Label env#epilogue; Mov (ebp, esp); Pop ebp; Ret; Meta m]
@@ -158,16 +158,23 @@ let rec compile env = function
                          env, [Mov (r, eax); Jmp env#epilogue]
                     else env, [Jmp env#epilogue]
             | CALL (f, cnt, isf) ->
-                    let env, tail = if isf
+                    let rec popn env acc n = 
+                        match n with
+                        | 0  -> env, acc
+                        | n' -> let arg, env = env#pop in 
+                                popn env (arg::acc) (n' - 1) in
+                    let env, args = popn env [] cnt in
+                    let env, movres = if isf
                                     then let s, env = env#allocate in
                                          env, [Mov (eax, s)]
                                     else env, [] in
                     let pushall l = List.map (fun x -> Push x) l in
                     let popall l = List.map (fun x -> Pop x) l in
                     env, (pushall env#live_registers) @
+                         (pushall args) @
                          [Call f; Binop ("-", L (cnt * word_size), esp)] @
                          (List.rev (popall env#live_registers)) @
-                         tail
+                         movres
             | _ -> failwith "not implemented yet" in
             let env, asm' = compile env code' in
             env, asm @ asm'
@@ -179,7 +186,7 @@ module S = Set.Make (String)
 (* Environment implementation *)
 let list_init len f = 
     let rec init acc i = 
-        if i == len - 1
+        if i == len 
         then acc
         else init ((f i)::acc) (i + 1) in
     init [] 0
