@@ -90,13 +90,101 @@ open SM
    Take an environment, a stack machine program, and returns a pair --- the updated environment and the list
    of x86 instructions
 *)
-let compile env code = failwith "Not implemented"
-                                
+let compileCmp flag lop rop = 
+    [Mov (lop, eax); Binop ("-", rop, eax); Set (flag, "%al"); Binop ("&&", L 1, eax); Mov (eax, lop)]
+
+let compileBinop env op = 
+    let rop, lop, env = env#pop2 in
+    let code = match op with
+        | "+" | "-" | "*" -> [Mov (lop, eax); Binop (op, rop, eax); Mov (eax, lop)]
+        | "/"             -> [Mov (lop, eax); Cltd; IDiv rop; Mov (eax, lop)]
+        | "%"             -> [Mov (lop, eax); Cltd; IDiv rop; Mov (edx, lop)]
+        | "<"             -> compileCmp "l" lop rop
+        | "<="            -> compileCmp "le" lop rop
+        | ">"             -> compileCmp "g" lop rop
+        | ">="            -> compileCmp "ge" lop rop
+        | "=="            -> compileCmp "e" lop rop
+        | "!="            -> compileCmp "ne" lop rop
+        | "!!"            -> [Mov (lop, eax); Binop (op, rop, eax); Set ("nz", "%al"); Binop ("&&", L 1, eax); Mov (eax, lop)]
+        | "&&"            -> [Mov (lop, eax); 
+                              Binop ("cmp", L 0, eax); 
+                              Set ("nz", "%al");
+                              Binop ("&&", L 1, eax); 
+                              Mov (eax, edx);
+                              Mov (rop, eax);
+                              Binop ("cmp", L 0, eax); 
+                              Set ("nz", "%al");
+                              Binop ("&&", L 1, eax); 
+                              Binop ("&&", edx, eax); 
+                              Mov (eax, lop)]
+        | _ -> failwith "not implemented yet"
+    in env#push lop, code
+
+let rec compile env = function                                
+    | [] -> env, []
+    | instr :: code' ->
+            let env, asm = match instr with
+            | CONST n ->
+                    let s, env = env#allocate in
+                    env, [Mov (L n, s)]
+            | READ ->
+                    let s, env = env#allocate in
+                    env, [Call "Lread"; Mov (eax, s)]
+            | WRITE ->
+                    let s, env = env#pop in
+                    env, [Push s; Call "Lwrite"; Pop eax]
+            | LD x ->
+                    let s, env = (env#global x)#allocate in
+                    env, [Mov (env#loc x, eax); Mov (eax, s)]
+            | ST x ->
+                    let s, env = (env#global x)#pop in
+                    env, [Mov (s, env#loc x)]
+            | BINOP op ->
+                    compileBinop env op
+            | LABEL l -> env, [Label l]
+            | JMP l -> env, [Jmp l]
+            | CJMP (flag, l) ->
+                    let s, env = env#pop in
+                    env, [Binop("cmp", L 0, s); CJmp(flag, l)]
+            | BEGIN (f, args, locals) ->
+                    let env = env#enter f args locals in
+                    env, [Push ebp; Mov (ebp, esp); Binop ("-", M ("$" ^ env#lsize), esp)]
+            | END ->
+                    let m = Printf.sprintf "\t.set %s, %d" env#lsize (env#allocated * word_size) in
+                    env, [Label env#epilogue; Mov (ebp, esp); Pop ebp; Ret; Meta m]
+            | RET f ->
+                    if f
+                    then let r, env = env#pop in 
+                         env, [Mov (r, eax); Jmp env#epilogue]
+                    else env, [Jmp env#epilogue]
+            | CALL (f, cnt, isf) ->
+                    let env, tail = if isf
+                                    then let s, env = env#allocate in
+                                         env, [Mov (eax, s)]
+                                    else env, [] in
+                    let pushall l = List.map (fun x -> Push x) l in
+                    let popall l = List.map (fun x -> Pop x) l in
+                    env, (pushall env#live_registers) @
+                         [Call f; Binop ("-", L (cnt * word_size), esp)] @
+                         (List.rev (popall env#live_registers)) @
+                         tail
+            | _ -> failwith "not implemented yet" in
+            let env, asm' = compile env code' in
+            env, asm @ asm'
+
+
 (* A set of strings *)           
 module S = Set.Make (String)
 
 (* Environment implementation *)
-let make_assoc l = List.combine l (List.init (List.length l) (fun x -> x))
+let list_init len f = 
+    let rec init acc i = 
+        if i == len - 1
+        then acc
+        else init ((f i)::acc) (i + 1) in
+    init [] 0
+
+let make_assoc l = List.combine l (list_init (List.length l) (fun x -> x))
                      
 class env =
   object (self)
