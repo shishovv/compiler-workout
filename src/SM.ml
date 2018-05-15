@@ -141,7 +141,7 @@ let compile (defs, p) =
         | Expr.Var   x          -> [LD x]
         | Expr.Const n          -> [CONST n]
         | Expr.Binop (op, x, y) -> expr x @ expr y @ [BINOP op]
-        | Expr.Call (f, args)   -> List.concat (List.map expr (List.rev args)) @ [CALL (f, List.length args, false)] 
+        | Expr.Call (f, args)   -> List.concat (List.map expr (List.rev args)) @ [CALL ("L" ^ f, List.length args, false)] 
         | Expr.String s         -> [STRING s]
         | Expr.Array a          -> List.concat (List.map expr a) @ [CALL ("$array", List.length a, false)]
         | Expr.Elem (a, i)      -> expr a @ expr i @ [CALL ("$elem", 2, false)]
@@ -180,6 +180,6 @@ let compile (defs, p) =
                 | _ -> [RET false]
         )
         | Stmt.Call (f, args) ->
-            List.concat (List.map expr args) @ [CALL (f, List.length args, true)] in
-    let def (f, (args, locals, body)) = [LABEL f; BEGIN (f, args, locals)] @ stmt body @ [END] in
+            List.concat (List.map expr args) @ [CALL ("L" ^ f, List.length args, true)] in
+    let def (f, (args, locals, body)) = [LABEL ("L" ^ f); BEGIN ("L" ^ f, args, locals)] @ stmt body @ [END] in
     stmt p @ [END] @ List.concat (List.map def defs)
