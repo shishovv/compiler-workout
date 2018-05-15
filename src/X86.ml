@@ -90,18 +90,102 @@ open SM
    Take an environment, a stack machine program, and returns a pair --- the updated environment and the list
    of x86 instructions
 *)
-let compile env code =
-  let suffix = function
-  | "<"  -> "l"
-  | "<=" -> "le"
-  | "==" -> "e"
-  | "!=" -> "ne"
-  | ">=" -> "ge"
-  | ">"  -> "g"
-  | _    -> failwith "unknown operator"	
-  in
-  let rec compile' env scode = failwith "Not implemented" in
-  compile' env code
+let compileCmp flag lop rop =
+    [Mov (lop, eax); Binop ("-", rop, eax); Set (flag, "%al"); Binop ("&&", L 1, eax); Mov (eax, lop)]
+
+let compileBinop env op =
+    let rop, lop, env = env#pop2 in
+    let code = match op with
+        | "+" | "-" | "*" -> [Mov (lop, eax); Binop (op, rop, eax); Mov (eax, lop)]
+        | "/"             -> [Mov (lop, eax); Cltd; IDiv rop; Mov (eax, lop)]
+        | "%"             -> [Mov (lop, eax); Cltd; IDiv rop; Mov (edx, lop)]
+        | "<"             -> compileCmp "l" lop rop
+        | "<="            -> compileCmp "le" lop rop
+        | ">"             -> compileCmp "g" lop rop
+        | ">="            -> compileCmp "ge" lop rop
+        | "=="            -> compileCmp "e" lop rop
+        | "!="            -> compileCmp "ne" lop rop
+        | "!!"            -> [Mov (lop, eax); Binop (op, rop, eax); Set ("nz", "%al"); Binop ("&&", L 1, eax); Mov (eax, lop)]
+        | "&&"            -> [Mov (lop, eax);
+                              Binop ("cmp", L 0, eax);
+                              Set ("nz", "%al");
+                              Binop ("&&", L 1, eax);
+                              Mov (eax, edx);
+                              Mov (rop, eax);
+                              Binop ("cmp", L 0, eax);
+                              Set ("nz", "%al");
+                              Binop ("&&", L 1, eax);
+                              Binop ("&&", edx, eax);
+                              Mov (eax, lop)]
+        | _ -> failwith "not implemented yet"
+    in env#push lop, code
+
+let rec compile env = function                                
+    | [] -> env, []
+    | instr :: code' ->
+            let env, asm = match instr with
+            | CONST n ->
+                    let s, env = env#allocate in
+                    env, [Mov (L n, s)]
+            | LD x ->
+                    let s, env = (env#global x)#allocate in
+                    env, [Mov (env#loc x, eax); Mov (eax, s)]
+            | ST x ->
+                    let s, env = (env#global x)#pop in
+                    env, [Mov (s, env#loc x)]
+            | BINOP op ->
+                    compileBinop env op
+            | LABEL l -> env, [Label l]
+            | JMP l -> env, [Jmp l]
+            | CJMP (flag, l) ->
+                    let s, env = env#pop in
+                    env, [Binop("cmp", L 0, s); CJmp(flag, l)]
+            | BEGIN (f, args, locals) ->
+                    let env = env#enter f args locals in
+                    env, [Push ebp; Mov (esp, ebp); Binop ("-", M ("$" ^ env#lsize), esp)]
+            | END ->
+                    let m = Printf.sprintf "\t.set %s, %d" env#lsize (env#allocated * word_size) in
+                    env, [Label env#epilogue; Mov (ebp, esp); Pop ebp; Ret; Meta m]
+            | RET f ->
+                    if f
+                    then let r, env = env#pop in 
+                         env, [Mov (r, eax); Jmp env#epilogue]
+                    else env, [Jmp env#epilogue]
+            | CALL (f, cnt, p) ->
+                    let rec popn env acc n = 
+                        match n with
+                        | 0  -> env, acc
+                        | n' -> let arg, env = env#pop in 
+                                popn env (arg::acc) (n' - 1) in
+                    let env, args = popn env [] cnt in
+                    let env, movres = if not p
+                                    then let s, env = env#allocate in
+                                         env, [Mov (eax, s)]
+                                    else env, [] in
+                    let pushall l = List.map (fun x -> Push x) l in
+                    let popall l = List.map (fun x -> Pop x) l in
+                    env, (pushall env#live_registers) @
+                         (pushall args) @
+                         [Call f; Binop ("-", L (cnt * word_size), esp)] @
+                         (List.rev (popall env#live_registers)) @
+                         movres
+            | _ -> failwith "not implemented yet" in
+            let env, asm' = compile env code' in
+            env, asm @ asm'
+
+
+(*let compile env code =*)
+  (*let suffix = function*)
+  (*| "<"  -> "l"*)
+  (*| "<=" -> "le"*)
+  (*| "==" -> "e"*)
+  (*| "!=" -> "ne"*)
+  (*| ">=" -> "ge"*)
+  (*| ">"  -> "g"*)
+  (*| _    -> failwith "unknown operator"	*)
+  (*in*)
+  (*let rec compile' env scode = failwith "Not implemented" in*)
+  (*compile' env code*)
 
 (* A set of strings *)           
 module S = Set.Make (String)
