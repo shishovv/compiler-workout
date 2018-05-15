@@ -107,7 +107,7 @@ let compile env code =
 module S = Set.Make (String)
 
 (* Environment implementation *)
-let make_assoc l = List.combine l (List.init (List.length l) (fun x -> x))
+let make_assoc l = List.combine l (Utils.list_init (List.length l) (fun x -> x))
                      
 class env =
   object (self)
