@@ -151,12 +151,12 @@ module Expr =
         | Const c -> st, i, o, Some (Value.of_int c)
         | Var x -> st, i, o, Some (State.eval st x)
         | Binop (op, lop, rop) ->
-                let (_, _, _, Some l)     = eval env conf lop in
+                let (_, _, _, Some l)  = eval env conf lop in
                 let (st, i, o, Some r) = eval env conf rop in
                 st, i, o, Some (Value.of_int (evalBinOp op (Value.to_int l) (Value.to_int r)))
         | Call (f, args) ->
                 let (st, i, o, args') as conf' = eval_list env conf args in
-                env#definition env f (List.rev args') (st, i, o, None)
+                env#definition env f args' (st, i, o, None)
         | Array a -> 
                 let (st, i, o, a') = eval_list env conf a in
                 env#definition env "$array" a' (st, i, o, None)
@@ -249,10 +249,7 @@ module Stmt =
       State.update x (match is with [] -> v | _ -> update (State.eval st x) v is) st
           
     let rec eval env ((st, i, o, r) as conf) k stmt =
-        let m s1 s2 = match s1, s2 with 
-            | s1, Skip -> s1 
-            | Skip, s2 -> s2 
-            | _ -> Seq(s1, s2) in
+        let m s1 s2 = match s2 with Skip -> s1 | _ -> Seq(s1, s2) in
         match stmt with
 		| Assign (x, is, e) -> (
                 let (st, i, o, Some v) = Expr.eval env conf e in
@@ -271,18 +268,12 @@ module Stmt =
                 let (st', i', o', Some v) = Expr.eval env conf e in
                 let conf' = (st', i', o', r) in
                 if Value.to_int v != 0
-                then eval env conf' (m k stmt) s
+                then eval env conf' (m stmt k) s
                 else eval env conf' Skip k
         )
-		| Repeat (s, e) -> (
-                let (st', i', o', Some v) = Expr.eval env conf e in
-                let conf' = (st', i', o', r) in
-				if Value.to_int v != 0
-				then conf
-				else eval env conf' Skip k
-        )
+        | Repeat (s, e) -> eval env conf (m (While (Expr.Binop ("==", e, Expr.Const 0), s)) k) s
 		| Call (f, args) -> (
-                eval env (Expr.eval env conf (Expr.Call (f, args))) Skip k
+                eval env (Expr.eval env conf (Expr.Call (f, args))) k Skip
         )
         | Return r -> (
                 match r with
