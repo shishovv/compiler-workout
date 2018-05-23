@@ -2,7 +2,6 @@
 
 (* The registers: *)
 let regs = [|"%ebx"; "%ecx"; "%esi"; "%edi"; "%eax"; "%edx"; "%ebp"; "%esp"|]
-
 (* We can not freely operate with all register; only 3 by now *)                    
 let num_of_regs = Array.length regs - 5
 
@@ -264,7 +263,7 @@ module S = Set.Make (String)
 module M = Map.Make (String)
 
 (* Environment implementation *)
-let make_assoc l = List.combine l (List.init (List.length l) (fun x -> x))
+let make_assoc l = List.combine l (Utils.list_init (List.length l) (fun x -> x))
                      
 class env =
   object (self)
