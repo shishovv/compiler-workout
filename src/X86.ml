@@ -251,6 +251,21 @@ let compile env code =
              else env, [Jmp env#epilogue]
              
           | CALL (f, n, p) -> call env f n p
+          | SEXP (t, i) ->
+                let ch_code = function
+                    | c when c <= 'Z' -> Char.code c - 64
+                    | '_' -> 53
+                    | c -> Char.code c - 70 in
+                let rec calc_int t tlen acc i = 
+                    if i >= tlen 
+                    then acc 
+                    else calc_int t tlen ((acc lsl 6) lor ch_code t.[i]) (i + 1) in
+                let rec calc_t t = 
+                    let tlen = String.length t in
+                    let subt = String.sub t 0 (if tlen < 5 then tlen else 5) in
+                    calc_int subt tlen 0 0 in
+                let env, c = call env ".sexp" (i + 1) true in
+                env, [Push (L(calc_t t))] @ c
         in
         let env'', code'' = compile' env' scode' in
 	env'', code' @ code''
@@ -264,7 +279,7 @@ module S = Set.Make (String)
 module M = Map.Make (String)
 
 (* Environment implementation *)
-let make_assoc l = List.combine l (List.init (List.length l) (fun x -> x))
+let make_assoc l = List.combine l (Utils.list_init (List.length l) (fun x -> x))
                      
 class env =
   object (self)
